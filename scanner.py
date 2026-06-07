@@ -73,7 +73,8 @@ def detect_pattern(df: pd.DataFrame, scan_days: int = 90) -> dict:
     }
 
     # ── ว่าที่ A = ATL ใน scan_days ─────────────────────────────────────
-    window = df.iloc[-scan_days:]
+    cutoff = df.index[-1] - pd.Timedelta(days=scan_days)
+    window = df[df.index >= cutoff]
     if len(window) < 20:
         return result
 
