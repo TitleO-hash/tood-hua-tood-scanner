@@ -12,13 +12,13 @@ SP500_SYMBOLS = []
 SET100_SYMBOLS = []
 
 try:
-    sp500_df = pd.read_csv("sp500.csv")
+    sp500_df = pd.read_csv("sp500_symbols.csv")
     SP500_SYMBOLS = sp500_df.iloc[:, 0].dropna().str.strip().tolist()
 except Exception:
     pass
 
 try:
-    set100_df = pd.read_csv("set100.csv")
+    set100_df = pd.read_csv("set100_symbols.csv")
     SET100_SYMBOLS = set100_df.iloc[:, 0].dropna().str.strip().tolist()
 except Exception:
     pass
@@ -51,14 +51,14 @@ with st.sidebar:
             st.success(f"โหลด S&P500 ได้ {len(SP500_SYMBOLS)} ตัว")
             symbols = SP500_SYMBOLS
         else:
-            st.warning("ยังไม่มีไฟล์ sp500.csv — กรุณาอัปโหลดไฟล์ก่อน")
+            st.warning("ยังไม่มีไฟล์ sp500_symbols.csv — กรุณาอัปโหลดไฟล์ก่อน")
 
     elif input_mode == "SET100":
         if SET100_SYMBOLS:
             st.success(f"โหลด SET100 ได้ {len(SET100_SYMBOLS)} ตัว")
             symbols = SET100_SYMBOLS
         else:
-            st.warning("ยังไม่มีไฟล์ set100.csv — กรุณาอัปโหลดไฟล์ก่อน")
+            st.warning("ยังไม่มีไฟล์ set100_symbols.csv — กรุณาอัปโหลดไฟล์ก่อน")
 
     elif input_mode == "อัปโหลด CSV":
         uploaded = st.file_uploader("อัปโหลดไฟล์ CSV (คอลัมน์แรก = ชื่อหุ้น)", type=["csv"])
