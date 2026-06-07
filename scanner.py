@@ -59,7 +59,11 @@ def detect_pattern(df: pd.DataFrame, scan_days: int = 90) -> dict:
         return result
 
     # Step 2: ไล่ขวาจาก ATL หา หัว candidate
+    # จำกัดให้ scan เฉพาะใน window 90 วัน (ATL ถึงวันสุดท้ายใน window)
+    window_start = window.index[0]
     after_atl = df.loc[atl_idx:].iloc[1:]
+    # กรองให้อยู่ใน window เท่านั้น
+    after_atl = after_atl[after_atl.index >= window_start]
 
     hua_candidate_price = None
     hua_candidate_rsi = None
