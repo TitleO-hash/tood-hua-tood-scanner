@@ -129,7 +129,7 @@ def priority_badge(pg):
         "break_lv1": ("#e8f0e8","#3b6d11","Break 10+ วัน ✅"),
     }
     bg,fg,label = m.get(pg,("#f0f0f0","#444",str(pg)))
-    return f'{label}'
+    return f'<span style="background:{bg};color:{fg};padding:2px 10px;border-radius:12px;font-size:12px;font-weight:500;white-space:nowrap">{label}</span>'
 
 
 def vol_badge(lv):
@@ -140,7 +140,7 @@ def vol_badge(lv):
         "LV1": ("#f0f0f0","#444441","Vol ปกติ"),
     }
     bg,fg,label = m.get(lv,("#f0f0f0","#444",str(lv)))
-    return f'{label}'
+    return f'<span style="background:{bg};color:{fg};padding:2px 10px;border-radius:12px;font-size:12px;white-space:nowrap">{label}</span>'
 
 
 def build_row(r):
@@ -149,17 +149,21 @@ def build_row(r):
     pg = r.get("priority_group")
     vl = r.get("volume_lv","LV1")
     latest = r.get("latest_close","-")
+    tood1 = r.get("tood1_price")
     hua = r.get("hua_price")
+    tood2c = r.get("tood2_candidate_price")
     pct = r.get("pct_from_hua")
     days = r.get("days_since_break")
     rdiff = r.get("pending_rsi_diff")
 
     return {
-        "หุ้น": f"{sym}" + (f" Gen{gen}" if gen>1 else ""),
+        "หุ้น": f"{sym}" + (f" <small style='color:gray'>Gen{gen}</small>" if gen>1 else ""),
         "ระดับความพร้อม": priority_badge(pg),
         "Volume": vol_badge(vl),
         "ราคาล่าสุด": latest,
-        "ราคาหัว": f"{hua:.2f}" if hua else "-",
+        "ตูด 1": f"{tood1:.2f}" if tood1 else "-",
+        "หัว": f"{hua:.2f}" if hua else "-",
+        "ว่าที่ตูด 2": f"{tood2c:.2f}" if tood2c else "-",
         "ห่างหัว %": f"{pct:.1f}%" if pct is not None else "-",
         "RSI Diff": f"{rdiff:.1f}" if rdiff is not None else "-",
         "Break มาแล้ว": f"{days} วัน" if days is not None else "-",
