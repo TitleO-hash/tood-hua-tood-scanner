@@ -30,6 +30,32 @@ def fetch_data(symbol: str, lookback_days: int = 270) -> pd.DataFrame:
 
 
 def detect_pattern(df: pd.DataFrame, scan_days: int = 90) -> dict:
+    """
+    ไล่อ่านกราฟจากซ้ายไปขวา ทีละวัน เหมือนคนอ่านกราฟจริงๆ
+
+    State: FIND_B
+    - ว่าที่ A = ATL 90 วัน
+    - ไล่ขวา ทีละวัน
+    - ถ้า RSI Diff (วันนั้น - ว่าที่ A) >= 8
+      → A ยืนยัน, ราคาวันนั้น = ว่าที่ B
+      → เปลี่ยนไป State: CONFIRM_B
+    
+    State: CONFIRM_B  
+    - ไล่ขวา ทีละวัน
+    - ถ้าราคาปิดสูงกว่า ว่าที่ B
+      → ยกเลิก ว่าที่ B เดิม, ว่าที่ B ใหม่ = ราคาวันนี้
+      → อยู่ใน State: CONFIRM_B ต่อ
+    - ถ้าราคาย่อลงจน RSI Diff (ว่าที่ B - วันนั้น) >= 8
+      → B ยืนยัน, ราคาวันนั้น = ว่าที่ C
+      → เปลี่ยนไป State: CONFIRM_C
+
+    State: CONFIRM_C
+    - ไล่ขวา ทีละวัน
+    - ถ้าราคาปิดต่ำกว่า A → ล้างไพ่
+    - ถ้าราคาปิดสูงกว่า B → C ยืนยัน = Signal BUY!
+    - ถ้ายังไม่เกิดทั้งสอง → จ่อ Break (ติดตาม Low ใหม่เป็น ว่าที่ C)
+    """
+
     result = {
         "state": "no_pattern",
         "tood1_idx": None, "tood1_price": None, "tood1_rsi": None,
@@ -46,7 +72,7 @@ def detect_pattern(df: pd.DataFrame, scan_days: int = 90) -> dict:
         "avg_vol_20": None,
     }
 
-    # Step 1: ATL ใน scan_days window เท่านั้น
+    # ── ว่าที่ A = ATL ใน scan_days ─────────────────────────────────────
     window = df.iloc[-scan_days:]
     if len(window) < 20:
         return result
@@ -54,158 +80,144 @@ def detect_pattern(df: pd.DataFrame, scan_days: int = 90) -> dict:
     atl_idx = window["Close"].idxmin()
     atl_price = float(df.loc[atl_idx, "Close"])
     atl_rsi = float(df.loc[atl_idx, "RSI"])
-
     if pd.isna(atl_rsi):
         return result
 
-    # Step 2: ไล่ขวาจาก ATL หา หัว candidate
-    # ใช้ iloc เพื่อไล่ขวาจาก ATL เท่านั้น ไม่ดึงข้อมูลก่อน ATL มาด้วย
+    # ── ไล่ขวาจาก ATL ────────────────────────────────────────────────────
     atl_pos = df.index.get_loc(atl_idx)
-    after_atl = df.iloc[atl_pos + 1:]
+    scan = df.iloc[atl_pos + 1:]
 
-    hua_candidate_price = None
-    hua_candidate_rsi = None
-    hua_candidate_idx = None
-    hua_candidate_found = False
+    # สถานะปัจจุบัน
+    current_state = "FIND_B"
 
-    for idx, row in after_atl.iterrows():
-        close = float(row["Close"])
-        rsi_val = row["RSI"]
-        if pd.isna(rsi_val):
-            continue
-        rsi = float(rsi_val)
-        rsi_diff_from_atl = rsi - atl_rsi
+    # ว่าที่ B
+    b_price = None
+    b_rsi = None
+    b_idx = None
 
-        if rsi_diff_from_atl >= 8:
-            if hua_candidate_price is None or close > hua_candidate_price:
-                hua_candidate_price = close
-                hua_candidate_rsi = rsi
-                hua_candidate_idx = idx
-                hua_candidate_found = True
-        else:
-            if hua_candidate_found and close > hua_candidate_price:
-                hua_candidate_price = close
-                hua_candidate_rsi = rsi
-                hua_candidate_idx = idx
+    # ว่าที่ C (Low ต่ำสุดหลัง B ยืนยัน)
+    c_price = None
+    c_idx = None
 
-    if not hua_candidate_found:
-        return {**result, "state": "searching"}
-
-    # Step 3: รอราคาย่อลงจน RSI Diff (หัว - ย่อ) >= 8
-    after_hua_candidate = df.loc[hua_candidate_idx:].iloc[1:]
-
-    hua_confirmed = False
-    hua_confirm_idx = None
-    post_hua_low_price = None
-    post_hua_low_idx = None
-
-    for idx, row in after_hua_candidate.iterrows():
+    for idx, row in scan.iterrows():
         close = float(row["Close"])
         rsi_val = row["RSI"]
         if pd.isna(rsi_val):
             continue
         rsi = float(rsi_val)
 
-        if close < atl_price:
-            return {**result, "state": "cancelled"}
+        # ══════════════════════════════════════════════════════════════════
+        # State: FIND_B — หา ว่าที่ B
+        # ══════════════════════════════════════════════════════════════════
+        if current_state == "FIND_B":
+            diff = rsi - atl_rsi
+            if diff >= 8:
+                # A ยืนยัน + ราคาวันนี้ = ว่าที่ B
+                b_price = close
+                b_rsi = rsi
+                b_idx = idx
+                current_state = "CONFIRM_B"
 
-        if post_hua_low_price is None or close < post_hua_low_price:
-            post_hua_low_price = close
-            post_hua_low_idx = idx
+        # ══════════════════════════════════════════════════════════════════
+        # State: CONFIRM_B — รอยืนยัน B หรือยกเลิก B
+        # ══════════════════════════════════════════════════════════════════
+        elif current_state == "CONFIRM_B":
+            if close > b_price:
+                # ราคาขึ้นสูงกว่า ว่าที่ B → ยกเลิก ว่าที่ B เดิม
+                # ว่าที่ B ใหม่ = ราคาวันนี้
+                b_price = close
+                b_rsi = rsi
+                b_idx = idx
 
-        rsi_diff_from_hua = hua_candidate_rsi - rsi
-        if rsi_diff_from_hua >= 8:
-            hua_confirmed = True
-            hua_confirm_idx = idx
-            break
-
-        if close > hua_candidate_price:
-            break
-
-    if not hua_confirmed:
-        return {**result, "state": "searching"}
-
-    result["tood1_idx"] = atl_idx
-    result["tood1_price"] = atl_price
-    result["tood1_rsi"] = atl_rsi
-    result["hua_idx"] = hua_candidate_idx
-    result["hua_price"] = hua_candidate_price
-    result["hua_rsi"] = hua_candidate_rsi
-    result["state"] = "hua"
-
-    # Step 4: หลังคอนเฟิมหัว ติดตาม ว่าที่ตูด 2
-    # KEY FIX: ขยับ Low ใหม่เสมอ แม้ RSI Diff >= 8 แล้ว
-    after_confirm = df.loc[hua_confirm_idx:].iloc[1:]
-
-    for idx, row in after_confirm.iterrows():
-        close = float(row["Close"])
-        rsi_val = row["RSI"]
-        if pd.isna(rsi_val):
-            continue
-
-        if close < atl_price:
-            return {**result, "state": "cancelled"}
-
-        # อัปเดต ว่าที่ตูด 2 เสมอ ถ้าเจอ Low ใหม่
-        if post_hua_low_price is None or close < post_hua_low_price:
-            post_hua_low_price = close
-            post_hua_low_idx = idx
-
-        # Breakout คอนเฟิม
-        if close > hua_candidate_price:
-            result["tood2_idx"] = post_hua_low_idx
-            result["tood2_price"] = post_hua_low_price
-            result["tood2_candidate_price"] = post_hua_low_price
-            result["tood2_candidate_idx"] = post_hua_low_idx
-            result["breakout_idx"] = idx
-            result["breakout_price"] = close
-            result["state"] = "confirmed"
-            today = df.index[-1]
-            result["days_since_break"] = (today - idx).days
-            d = result["days_since_break"]
-            if d <= 2:
-                result["priority_group"] = "break_lv4"
-            elif d <= 5:
-                result["priority_group"] = "break_lv3"
-            elif d <= 10:
-                result["priority_group"] = "break_lv2"
             else:
-                result["priority_group"] = "break_lv1"
-            break
+                # ราคาย่อลง → เช็ค RSI Diff
+                diff = b_rsi - rsi
+                if diff >= 8:
+                    # B ยืนยัน! ราคาวันนี้ = ว่าที่ C
+                    c_price = close
+                    c_idx = idx
+                    current_state = "CONFIRM_C"
 
-    # จ่อ Break
-    if result["state"] == "hua":
+        # ══════════════════════════════════════════════════════════════════
+        # State: CONFIRM_C — รอยืนยัน C
+        # ══════════════════════════════════════════════════════════════════
+        elif current_state == "CONFIRM_C":
+            # ล้างไพ่
+            if close < atl_price:
+                return {**result, "state": "cancelled"}
+
+            # ขยับ ว่าที่ C ถ้าเจอ Low ใหม่
+            if close < c_price:
+                c_price = close
+                c_idx = idx
+
+            # C ยืนยัน = Breakout!
+            if close > b_price:
+                result["tood1_idx"] = atl_idx
+                result["tood1_price"] = atl_price
+                result["tood1_rsi"] = atl_rsi
+                result["hua_idx"] = b_idx
+                result["hua_price"] = b_price
+                result["hua_rsi"] = b_rsi
+                result["tood2_idx"] = c_idx
+                result["tood2_price"] = c_price
+                result["tood2_candidate_price"] = c_price
+                result["tood2_candidate_idx"] = c_idx
+                result["breakout_idx"] = idx
+                result["breakout_price"] = close
+                result["state"] = "confirmed"
+                today = df.index[-1]
+                result["days_since_break"] = (today - idx).days
+                d = result["days_since_break"]
+                if d <= 2:
+                    result["priority_group"] = "break_lv4"
+                elif d <= 5:
+                    result["priority_group"] = "break_lv3"
+                elif d <= 10:
+                    result["priority_group"] = "break_lv2"
+                else:
+                    result["priority_group"] = "break_lv1"
+                break
+
+    # ── ยังไม่ Breakout = จ่อ Break ──────────────────────────────────────
+    if result["state"] == "no_pattern" and current_state in ("CONFIRM_B", "CONFIRM_C"):
+        result["tood1_idx"] = atl_idx
+        result["tood1_price"] = atl_price
+        result["tood1_rsi"] = atl_rsi
+        result["hua_idx"] = b_idx
+        result["hua_price"] = b_price
+        result["hua_rsi"] = b_rsi
+        result["tood2_candidate_price"] = c_price
+        result["tood2_candidate_idx"] = c_idx
+
         latest = df.iloc[-1]
         latest_close = float(latest["Close"])
 
-        # RSI Diff วัดจาก หัว ถึง ว่าที่ตูด 2 (Low ต่ำสุดหลังหัว)
         tood2_rsi = None
-        if post_hua_low_idx is not None:
-            rsi_val = df.loc[post_hua_low_idx, "RSI"]
-            if not pd.isna(rsi_val):
-                tood2_rsi = float(rsi_val)
+        if c_idx is not None and not pd.isna(df.loc[c_idx, "RSI"]):
+            tood2_rsi = float(df.loc[c_idx, "RSI"])
 
-        pending_diff = (hua_candidate_rsi - tood2_rsi) if tood2_rsi is not None else 0
-
-        result["tood2_candidate_price"] = post_hua_low_price
-        result["tood2_candidate_idx"] = post_hua_low_idx
+        pending_diff = (b_rsi - tood2_rsi) if tood2_rsi else 0
         result["pending_rsi_diff"] = round(pending_diff, 2)
         result["pct_from_hua"] = round(
-            (hua_candidate_price - latest_close) / hua_candidate_price * 100, 2
-        )
+            (b_price - latest_close) / b_price * 100, 2
+        ) if b_price else None
 
-        if pending_diff >= 8 and result["pct_from_hua"] <= 3:
-            result["priority_group"] = 4
-        elif pending_diff >= 8:
-            result["priority_group"] = 3
-        elif pending_diff >= 4:
-            result["priority_group"] = 2
+        if current_state == "CONFIRM_C":
+            if pending_diff >= 8 and result["pct_from_hua"] is not None and result["pct_from_hua"] <= 3:
+                result["priority_group"] = 4
+            elif pending_diff >= 8:
+                result["priority_group"] = 3
+            elif pending_diff >= 4:
+                result["priority_group"] = 2
+            else:
+                result["priority_group"] = 1
         else:
             result["priority_group"] = 1
 
         result["state"] = "จ่อ_break"
 
-    # Volume Analysis
+    # ── Volume Analysis ───────────────────────────────────────────────────
     if result["tood1_idx"] is not None:
         end_vol = result["breakout_idx"] if result["breakout_idx"] else df.index[-1]
         try:
