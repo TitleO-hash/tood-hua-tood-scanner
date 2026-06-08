@@ -79,7 +79,7 @@ def detect_pattern(df: pd.DataFrame, scan_days: int = 90) -> dict:
         window = df[df.index >= cutoff]
     else:
         window = df
-    if len(window) < 20:
+    if len(window) < 10:
         return result
 
     atl_idx = window["Close"].idxmin()
@@ -228,16 +228,22 @@ def detect_pattern(df: pd.DataFrame, scan_days: int = 90) -> dict:
         try:
             form_vol = df.loc[result["tood1_idx"]:end_vol, "Volume"]
             max_vol = float(form_vol.max())
+            # หาวันที่ Max Vol เกิดขึ้น
+            max_vol_idx = form_vol.idxmax()
+            # avg_20 ณ วันที่ Max Vol (หลักสากล)
+            max_vol_pos = df.index.get_loc(max_vol_idx)
+            avg_20_slice = df["Volume"].iloc[max(0, max_vol_pos - 20):max_vol_pos]
+            avg_20 = float(avg_20_slice.mean()) if len(avg_20_slice) > 0 else np.nan
         except Exception:
             max_vol = np.nan
+            avg_20 = np.nan
 
-        avg_20 = float(df["Volume"].iloc[-20:].mean())
         ath_vol_1y = float(df["Volume"].iloc[-252:].max()) if len(df) >= 252 else float(df["Volume"].max())
 
         result["max_vol_in_formation"] = max_vol
         result["avg_vol_20"] = avg_20
 
-        if pd.notna(max_vol) and avg_20 > 0:
+        if pd.notna(max_vol) and pd.notna(avg_20) and avg_20 > 0:
             ratio = max_vol / avg_20
             if max_vol >= ath_vol_1y:
                 result["volume_lv"] = "LV4"
