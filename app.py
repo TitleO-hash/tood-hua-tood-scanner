@@ -179,8 +179,45 @@ if run_btn:
         st.warning("กรุณาเลือกหรือใส่รายชื่อหุ้นก่อนครับ")
         st.stop()
 
-    with st.spinner(f"กำลังสแกน {len(symbols)} ตัว..."):
-        results = scan_universe(symbols, scan_days=scan_days)
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    results = []
+    
+    from scanner import fetch_data, detect_nested
+    total = len(symbols)
+    
+    for i, sym in enumerate(symbols):
+        status_text.text(f"กำลังสแกน {sym} ({i+1}/{total})")
+        progress_bar.progress((i + 1) / total)
+        try:
+            from scanner import fetch_data, detect_nested
+            import pandas as pd
+            df = fetch_data(sym, lookback_days=scan_days + 180)
+            if df.empty or len(df) < 30:
+                continue
+            state = detect_nested(df, scan_days=scan_days)
+            if state.get("state") in ("no_pattern", "searching", "cancelled", "no_data"):
+                continue
+            state["symbol"] = sym
+            state["latest_close"] = round(float(df["Close"].iloc[-1]), 2)
+            state["scan_date"] = df.index[-1].strftime("%Y-%m-%d")
+            results.append(state)
+        except Exception as e:
+            print(f"Error {sym}: {e}")
+            continue
+    
+    # Sort
+    vol_order = {"LV4": 0, "LV3": 1, "LV2": 2, "LV1": 3, None: 4}
+    group_order = {4: 0, 3: 1, 2: 2, 1: 3, "break_lv4": 4, "break_lv3": 5, "break_lv2": 6, "break_lv1": 7}
+    def sort_key(r):
+        pg = group_order.get(r.get("priority_group"), 99)
+        vl = vol_order.get(r.get("volume_lv"), 4)
+        pct = r.get("pct_from_hua") or 999
+        return (pg, vl, pct)
+    results.sort(key=sort_key)
+    
+    status_text.text(f"สแกนเสร็จแล้ว! พบ {len(results)} ตัว")
+    progress_bar.progress(1.0)
 
     if not results:
         st.info("ไม่พบหุ้นที่ผ่านเงื่อนไขในขณะนี้")
