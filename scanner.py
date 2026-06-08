@@ -67,9 +67,7 @@ def detect_pattern(df: pd.DataFrame, scan_days: int = 90) -> dict:
         "pct_from_hua": None,
         "days_since_break": None,
         "priority_group": None,
-        "volume_lv": None,
-        "max_vol_in_formation": None,
-        "avg_vol_20": None,
+
     }
 
     # ── ว่าที่ A = ATL ใน scan_days ─────────────────────────────────────
@@ -222,40 +220,6 @@ def detect_pattern(df: pd.DataFrame, scan_days: int = 90) -> dict:
 
         result["state"] = "จ่อ_break"
 
-    # ── Volume Analysis ───────────────────────────────────────────────────
-    if result["tood1_idx"] is not None:
-        end_vol = result["breakout_idx"] if result["breakout_idx"] else df.index[-1]
-        try:
-            form_vol = df.loc[result["tood1_idx"]:end_vol, "Volume"]
-            max_vol = float(form_vol.max())
-            # หาวันที่ Max Vol เกิดขึ้น
-            max_vol_idx = form_vol.idxmax()
-            # avg_20 ณ วันที่ Max Vol (หลักสากล)
-            max_vol_pos = df.index.get_loc(max_vol_idx)
-            avg_20_slice = df["Volume"].iloc[max(0, max_vol_pos - 20):max_vol_pos]
-            avg_20 = float(avg_20_slice.mean()) if len(avg_20_slice) > 0 else np.nan
-        except Exception:
-            max_vol = np.nan
-            avg_20 = np.nan
-
-        ath_vol_1y = float(df["Volume"].iloc[-252:].max()) if len(df) >= 252 else float(df["Volume"].max())
-
-        result["max_vol_in_formation"] = max_vol
-        result["avg_vol_20"] = avg_20
-
-        if pd.notna(max_vol) and pd.notna(avg_20) and avg_20 > 0:
-            ratio = max_vol / avg_20
-            if max_vol >= ath_vol_1y:
-                result["volume_lv"] = "LV4"
-            elif ratio >= 5:
-                result["volume_lv"] = "LV3"
-            elif ratio >= 1.5:
-                result["volume_lv"] = "LV2"
-            else:
-                result["volume_lv"] = "LV1"
-        else:
-            result["volume_lv"] = "LV1"
-
     return result
 
 
@@ -303,16 +267,14 @@ def scan_universe(symbols: list, scan_days: int = 90) -> list:
             print(f"Error {sym}: {e}")
             continue
 
-    vol_order = {"LV4": 0, "LV3": 1, "LV2": 2, "LV1": 3, None: 4}
     group_order = {4: 0, 3: 1, 2: 2, 1: 3,
                    "break_lv4": 4, "break_lv3": 5,
                    "break_lv2": 6, "break_lv1": 7}
 
     def sort_key(r):
         pg = group_order.get(r.get("priority_group"), 99)
-        vl = vol_order.get(r.get("volume_lv"), 4)
         pct = r.get("pct_from_hua") or 999
-        return (pg, vl, pct)
+        return (pg, pct)
 
     results.sort(key=sort_key)
     return results
