@@ -250,21 +250,29 @@ def detect_pattern(df: pd.DataFrame, scan_days: int = 90) -> dict:
 
 
 def detect_nested(df: pd.DataFrame, scan_days: int = 90) -> dict:
-    result_gen1 = detect_pattern(df, scan_days)
-    result_gen1["generation"] = 1
+    current_result = detect_pattern(df, scan_days)
+    current_result["generation"] = 1
+    current_df = df
+    gen = 1
 
-    if result_gen1.get("state") == "confirmed" and result_gen1.get("tood2_idx") is not None:
-        tood2_pos = df.index.get_loc(result_gen1["tood2_idx"])
-        df_gen2 = df.iloc[tood2_pos:]
-        days_remaining = len(df_gen2)
-        if days_remaining >= 20:
-            result_gen2 = detect_pattern(df_gen2, scan_days=days_remaining)
-            result_gen2["generation"] = 2
-            result_gen2["parent"] = result_gen1
-            if result_gen2.get("state") not in ("no_pattern", "cancelled", "searching"):
-                return result_gen2
+    while (current_result.get("state") == "confirmed"
+           and current_result.get("tood2_idx") is not None):
+        tood2_pos = current_df.index.get_loc(current_result["tood2_idx"])
+        next_df = current_df.iloc[tood2_pos:]
+        days_remaining = len(next_df)
+        if days_remaining < 20:
+            break
+        next_result = detect_pattern(next_df, scan_days=days_remaining)
+        gen += 1
+        next_result["generation"] = gen
+        next_result["parent"] = current_result
+        if next_result.get("state") not in ("no_pattern", "cancelled", "searching"):
+            current_result = next_result
+            current_df = next_df
+        else:
+            break
 
-    return result_gen1
+    return current_result
 
 
 def scan_universe(symbols: list, scan_days: int = 90) -> list:
