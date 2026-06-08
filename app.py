@@ -120,11 +120,12 @@ with st.sidebar:
 def render_table(rows):
     df_show = pd.DataFrame(rows)
     html = df_show.to_html(escape=False, index=False)
-    sticky_html = f"""
+    html = html.replace("<table", "<table class='sticky-table'")
+    sticky_html = """
     <div style="overflow-x:auto; max-height:600px; overflow-y:auto;">
         <style>
-            .sticky-table {{ border-collapse: collapse; width: 100%; }}
-            .sticky-table th {{
+            .sticky-table { border-collapse: collapse; width: 100%; }
+            .sticky-table th {
                 position: sticky;
                 top: 0;
                 background: #1e1e2e;
@@ -134,16 +135,16 @@ def render_table(rows):
                 border-bottom: 2px solid #444;
                 white-space: nowrap;
                 font-size: 13px;
-            }}
-            .sticky-table td {{
+            }
+            .sticky-table td {
                 padding: 8px 12px;
                 border-bottom: 1px solid #333;
                 font-size: 13px;
                 white-space: nowrap;
-            }}
-            .sticky-table tr:hover td {{ background: rgba(255,255,255,0.05); }}
+            }
+            .sticky-table tr:hover td { background: rgba(255,255,255,0.05); }
         </style>
-        {{html.replace("<table", "<table class='sticky-table'")}}
+    """ + html + """
     </div>
     """
     st.write(sticky_html, unsafe_allow_html=True)
