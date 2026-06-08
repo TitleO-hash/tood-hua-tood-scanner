@@ -117,6 +117,37 @@ with st.sidebar:
     run_btn = st.button("🔍 สแกนเลย!", use_container_width=True, type="primary")
 
 
+def render_table(rows):
+    df_show = pd.DataFrame(rows)
+    html = df_show.to_html(escape=False, index=False)
+    sticky_html = f"""
+    <div style="overflow-x:auto; max-height:600px; overflow-y:auto;">
+        <style>
+            .sticky-table {{ border-collapse: collapse; width: 100%; }}
+            .sticky-table th {{
+                position: sticky;
+                top: 0;
+                background: #1e1e2e;
+                color: #fff;
+                z-index: 1;
+                padding: 8px 12px;
+                border-bottom: 2px solid #444;
+                white-space: nowrap;
+                font-size: 13px;
+            }}
+            .sticky-table td {{
+                padding: 8px 12px;
+                border-bottom: 1px solid #333;
+                font-size: 13px;
+                white-space: nowrap;
+            }}
+            .sticky-table tr:hover td {{ background: rgba(255,255,255,0.05); }}
+        </style>
+        {{html.replace("<table", "<table class='sticky-table'")}}
+    </div>
+    """
+    st.write(sticky_html, unsafe_allow_html=True)
+
 def priority_badge(pg):
     m = {
         4: ("#fff3cd","#856404","จวนจะระเบิด 🔥🔥🔥🔥"),
@@ -131,16 +162,6 @@ def priority_badge(pg):
     bg,fg,label = m.get(pg,("#f0f0f0","#444",str(pg)))
     return f'<span style="background:{bg};color:{fg};padding:2px 10px;border-radius:12px;font-size:12px;font-weight:500;white-space:nowrap">{label}</span>'
 
-
-def vol_badge(lv):
-    m = {
-        "LV4": ("#ffe8e8","#7d0000","Vol สูงสุดในรอบปี 🔥🔥🔥🔥"),
-        "LV3": ("#fde8d8","#7d3200","Vol ผิดปกติมาก 🔥🔥🔥"),
-        "LV2": ("#fff3cd","#856404","Vol ผิดปกติ 🔥🔥"),
-        "LV1": ("#f0f0f0","#444441","Vol ปกติ"),
-    }
-    bg,fg,label = m.get(lv,("#f0f0f0","#444",str(lv)))
-    return f'<span style="background:{bg};color:{fg};padding:2px 10px;border-radius:12px;font-size:12px;white-space:nowrap">{label}</span>'
 
 
 def build_row(r):
@@ -159,7 +180,6 @@ def build_row(r):
     return {
         "หุ้น": f"{sym}" + (f" <small style='color:gray'>Gen{gen}</small>" if gen>1 else ""),
         "ระดับความพร้อม": priority_badge(pg),
-        "Volume": vol_badge(vl),
         "ราคาล่าสุด": latest,
         "ตูด 1": f"{tood1:.2f}" if tood1 else "-",
         "หัว": f"{hua:.2f}" if hua else "-",
@@ -239,7 +259,7 @@ if run_btn:
     with tab1:
         if waiting:
             rows = [build_row(r) for r in waiting]
-            st.write(pd.DataFrame(rows).to_html(escape=False,index=False), unsafe_allow_html=True)
+            render_table(rows)
             st.caption("เรียงลำดับ: ระดับความพร้อม → Volume → % ห่างหัว")
         else:
             st.info("ไม่มีหุ้นในกลุ่มจ่อ Breakout ที่ตรงเงื่อนไข")
@@ -247,7 +267,7 @@ if run_btn:
     with tab2:
         if confirmed:
             rows = [build_row(r) for r in confirmed]
-            st.write(pd.DataFrame(rows).to_html(escape=False,index=False), unsafe_allow_html=True)
+            render_table(rows)
             st.caption("เรียงลำดับ: วันที่ Break (น้อย = Priority สูง) → Volume")
         else:
             st.info("ไม่มีหุ้น Breakout แล้วในเงื่อนไขที่เลือก")
