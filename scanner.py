@@ -151,8 +151,8 @@ def detect_pattern(df: pd.DataFrame, scan_days: int = 90) -> dict:
             if close < atl_price:
                 return {**result, "state": "cancelled"}
 
-            # ขยับ ว่าที่ C ถ้าเจอ Low ใหม่
-            if close < c_price:
+            # ขยับ ว่าที่ C ถ้าเจอ Low ใหม่ (ใช้ <= เผื่อราคาเท่ากัน)
+            if close <= c_price:
                 c_price = close
                 c_idx = idx
 
