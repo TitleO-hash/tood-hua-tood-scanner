@@ -73,8 +73,12 @@ def detect_pattern(df: pd.DataFrame, scan_days: int = 90) -> dict:
     }
 
     # ── ว่าที่ A = ATL ใน scan_days ─────────────────────────────────────
-    cutoff = df.index[-1] - pd.Timedelta(days=scan_days)
-    window = df[df.index >= cutoff]
+    # Gen 1 ใช้ calendar days, Gen 2+ ใช้ df ทั้งหมด
+    if scan_days <= 365:
+        cutoff = df.index[-1] - pd.Timedelta(days=scan_days)
+        window = df[df.index >= cutoff]
+    else:
+        window = df
     if len(window) < 20:
         return result
 
@@ -262,7 +266,7 @@ def detect_nested(df: pd.DataFrame, scan_days: int = 90) -> dict:
         days_remaining = len(next_df)
         if days_remaining < 20:
             break
-        next_result = detect_pattern(next_df, scan_days=days_remaining)
+        next_result = detect_pattern(next_df, scan_days=999)  # Gen 2+ ใช้ df ทั้งหมด
         gen += 1
         next_result["generation"] = gen
         next_result["parent"] = current_result
